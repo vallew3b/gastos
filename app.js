@@ -92,6 +92,13 @@ const dbService = {
   async init() {
     if (!supabaseClient) {
       initializeDemoData();
+    } else {
+      // Limpiar datos demo locales antiguos para no mostrar nombres de prueba
+      try {
+        localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+        localStorage.removeItem(STORAGE_KEYS.PEOPLE);
+        localStorage.removeItem(STORAGE_KEYS.PAYMENTS);
+      } catch (e) {}
     }
   },
 
@@ -504,7 +511,7 @@ const dbService = {
           .select('nombre')
           .order('nombre', { ascending: true });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           return data.map(r => r.nombre);
         }
       } catch (e) {
@@ -513,7 +520,7 @@ const dbService = {
     }
 
     const data = localStorage.getItem(STORAGE_KEYS.PEOPLE);
-    return data ? JSON.parse(data) : ['Monse', 'Carlos', 'Ana', 'Kenia'];
+    return data ? JSON.parse(data) : [];
   },
 
   async addPerson(name) {
@@ -527,6 +534,7 @@ const dbService = {
       } catch (err) {
         console.error('Error añadiendo persona en Supabase:', err);
       }
+      return;
     }
 
     const people = await this.getPeople();
