@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monse Cuentas - Control y Gestión de Gastos</title>
+  
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Supabase JS Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- HEADER -->
+    <header class="header">
+      <div class="brand-title">
+        <div class="brand-logo">
+          <i data-lucide="wallet"></i>
+        </div>
+        <div>
+          <h1>Monse Cuentas</h1>
+          <p>Administrador de Gastos y Cuentas Semanales</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btnOpenNewExpense" class="btn btn-primary" onclick="window.openExpenseModal && window.openExpenseModal()">
+          <i data-lucide="plus-circle"></i> Nuevo Gasto
+        </button>
+      </div>
+    </header>
+
+    <!-- DASHBOARD STATS SUMMARY -->
+    <section class="summary-grid">
+      <div class="stat-card" style="--card-accent: var(--accent-primary);">
+        <div class="stat-header">
+          <span>Gasto Total Acumulado</span>
+          <div class="stat-icon"><i data-lucide="dollar-sign"></i></div>
+        </div>
+        <div class="stat-value" id="statTotalSpent">$0.00</div>
+        <div class="stat-subtitle" id="statTotalCount">0 gastos registrados</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-amber);">
+        <div class="stat-header">
+          <span>Pendiente de Pago</span>
+          <div class="stat-icon"><i data-lucide="clock"></i></div>
+        </div>
+        <div class="stat-value" id="statPendingSpent" style="color: var(--accent-amber);">$0.00</div>
+        <div class="stat-subtitle" id="statPendingCount">0 gastos por cobrar</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-emerald);">
+        <div class="stat-header">
+          <span>Total Liquidado</span>
+          <div class="stat-icon"><i data-lucide="check-circle-2"></i></div>
+        </div>
+        <div class="stat-value" id="statPaidSpent" style="color: var(--accent-emerald);">$0.00</div>
+        <div class="stat-subtitle" id="statPaidCount">0 gastos pagados</div>
+      </div>
+
+      <div class="stat-card" style="--card-accent: var(--accent-rose);">
+        <div class="stat-header">
+          <span>Mayor Deudor Semanal</span>
+          <div class="stat-icon"><i data-lucide="user-x"></i></div>
+        </div>
+        <div class="stat-value" id="statTopDebtorName" style="font-size: 1.35rem; color: var(--accent-rose);">-</div>
+        <div class="stat-subtitle" id="statTopDebtorAmount">Sin deudas pendientes</div>
+      </div>
+    </section>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="tabs-navigation">
+      <button class="tab-btn active" data-tab="tab-gastos">
+        <i data-lucide="list"></i> Lista de Gastos
+      </button>
+      <button class="tab-btn" data-tab="tab-semanal">
+        <i data-lucide="calendar"></i> Vista Semanal
+      </button>
+      <button class="tab-btn" data-tab="tab-historial">
+        <i data-lucide="history"></i> Historial de Pagos
+      </button>
+    </nav>
+
+    <!-- TAB 1: LISTA DE GASTOS -->
+    <main id="tab-gastos" class="tab-content active">
+      <div class="section-title-bar">
+        <h2><i data-lucide="receipt"></i> Registro de Gastos</h2>
+        
+        <div class="filter-bar">
+          <input type="text" id="searchExpense" class="search-input" placeholder="Buscar por concepto...">
+          
+          <select id="filterPerson" class="select-input">
+            <option value="">Todas las personas</option>
+          </select>
+
+          <select id="filterStatus" class="select-input">
+            <option value="activos" selected>Solo Cuentas Activas (Pendientes / Parciales)</option>
+            <option value="todos">Ver Todos (Incluir Pagados)</option>
+            <option value="pendiente">Solo Pendientes</option>
+            <option value="parcial">Solo Parciales</option>
+            <option value="pagado">Solo Pagados</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="expense-list-container">
+        <table class="expense-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Concepto</th>
+              <th>Quién Debe</th>
+              <th>Categoría</th>
+              <th>Monto</th>
+              <th>Estado</th>
+              <th style="text-align: right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="expensesTableBody">
+            <!-- Dynamic rows populated via JS -->
+          </tbody>
+        </table>
+        
+        <div id="expensesEmptyState" class="empty-state" style="display: none;">
+          <div class="empty-icon"><i data-lucide="inbox"></i></div>
+          <p>No se encontraron gastos registrados con los filtros actuales.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: VISTA SEMANAL -->
+    <main id="tab-semanal" class="tab-content">
+      <div class="section-title-bar">
+        <div>
+          <h2><i data-lucide="calendar-days"></i> Gastos por Semana</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            Visualiza cuánto se gasta cada semana, quién debe más y gestiona los pagos semanales.
+          </p>
+        </div>
+
+        <div class="filter-bar">
+          <label class="radio-inline" style="font-size: 0.85rem; color: var(--text-muted);">
+            <input type="checkbox" id="chkShowPaidWeeks"> Mostrar semanas liquidadas
+          </label>
+        </div>
+      </div>
+
+      <div id="weeklyCardsGrid" class="weekly-grid">
+        <!-- Dynamic weekly cards populated via JS -->
+      </div>
+
+      <div id="weeklyEmptyState" class="empty-state" style="display: none;">
+        <div class="empty-icon"><i data-lucide="calendar-x"></i></div>
+        <p>No hay gastos registrados para agrupar semanalmente.</p>
+      </div>
+    </main>
+
+    <!-- TAB 3: HISTORIAL DE PAGOS -->
+    <main id="tab-historial" class="tab-content">
+      <div class="section-title-bar">
+        <div>
+          <h2><i data-lucide="history"></i> Historial de Liquidaciones</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            Registro de semanas marcadas como pagadas y saldos liquidados.
+          </p>
+        </div>
+
+        <div class="filter-bar">
+          <input type="text" id="searchHistory" class="search-input" placeholder="Buscar por concepto o persona (ej. Gasolina, Kenia)..." style="width: 280px;">
+        </div>
+      </div>
+
+      <div id="historyListContainer" class="history-list">
+        <!-- Dynamic payment history populated via JS -->
+      </div>
+
+      <div id="historyEmptyState" class="empty-state" style="display: none;">
+        <div class="empty-icon"><i data-lucide="file-clock"></i></div>
+        <p>No se encontraron registros de liquidaciones con la búsqueda actual.</p>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- MODAL: NUEVO GASTO -->
+  <div id="modalNewExpense" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalExpenseTitle">Registrar Nuevo Gasto</h3>
+        <button class="close-btn" data-close-modal="modalNewExpense">&times;</button>
+      </div>
+
+      <form id="formExpense">
+        <input type="hidden" id="editExpenseId">
+
+        <div class="form-group">
+          <label for="expMonto">Monto ($) *</label>
+          <input type="number" step="0.01" min="0" id="expMonto" class="text-input" placeholder="0.00" required>
+        </div>
+
+        <div class="form-group">
+          <label for="expConcepto">Concepto / Descripción *</label>
+          <input type="text" id="expConcepto" class="text-input" placeholder="Ej. Despensa, Luz, Salida a cenar..." required>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de Gasto</label>
+          <div class="expense-type-toggle">
+            <button type="button" id="btnTypeIndividual" class="type-btn active">
+              <i data-lucide="user"></i> Individual
+            </button>
+            <button type="button" id="btnTypeSplit" class="type-btn">
+              <i data-lucide="users"></i> Dividir entre varias personas
+            </button>
+          </div>
+        </div>
+
+        <!-- MODO INDIVIDUAL -->
+        <div id="singlePersonGroup" class="form-group">
+          <label for="expQuienDebe">Quién Debe *</label>
+          <div class="input-with-add">
+            <select id="expQuienDebe" class="select-input">
+              <!-- Options populated dynamically -->
+            </select>
+            <button type="button" id="btnAddNewPersonModal" class="btn btn-secondary btn-icon" title="Agregar nueva persona">
+              <i data-lucide="user-plus"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- MODO DIVIDIDO -->
+        <div id="splitExpenseGroup" class="form-group" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <label style="margin-bottom: 0;">Selecciona quiénes participan *</label>
+            <div class="split-mode-options">
+              <label class="radio-inline">
+                <input type="radio" name="splitMode" value="equal" checked> Partes iguales
+              </label>
+              <label class="radio-inline">
+                <input type="radio" name="splitMode" value="custom"> Montos personalizados
+              </label>
+            </div>
+          </div>
+
+          <div id="splitParticipantsContainer" class="split-participants-list">
+            <!-- Dynamic participant checkboxes and amount inputs populated via JS -->
+          </div>
+
+          <div id="splitValidationNotice" class="split-validation-notice">
+            <span>Suma asignada: <strong id="splitAssignedSum">$0.00</strong> / Total: <strong id="splitTotalTarget">$0.00</strong></span>
+            <span id="splitStatusBadge" class="badge badge-pending">Incompleto</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="expFecha">Fecha *</label>
+          <input type="date" id="expFecha" class="date-input" required>
+        </div>
+
+        <div class="form-group">
+          <label for="expCategoria">Categoría</label>
+          <select id="expCategoria" class="select-input">
+            <option value="Alimentación">Alimentación / Despensa</option>
+            <option value="Servicios">Servicios (Luz, Agua, Internet)</option>
+            <option value="Hogar">Hogar y Mantenimiento</option>
+            <option value="Salidas">Salidas y Entretenimiento</option>
+            <option value="Otros" selected>Otros</option>
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" data-close-modal="modalNewExpense">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i data-lucide="save"></i> Guardar Gasto
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: AGREGAR NUEVA PERSONA -->
+  <div id="modalNewPerson" class="modal-overlay">
+    <div class="modal-card" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Agregar Persona</h3>
+        <button class="close-btn" data-close-modal="modalNewPerson">&times;</button>
+      </div>
+
+      <form id="formNewPerson">
+        <div class="form-group">
+          <label for="newPersonName">Nombre de la Persona *</label>
+          <input type="text" id="newPersonName" class="text-input" placeholder="Ej. Laura, Roberto..." required>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" data-close-modal="modalNewPerson">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Agregar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: DETALLE Y LIQUIDACIÓN DE SEMANA -->
+  <div id="modalWeekDetail" class="modal-overlay">
+    <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-header">
+        <div>
+          <h3 id="weekModalTitle">Detalle de la Semana</h3>
+          <p id="weekModalSub" style="font-size: 0.85rem; color: var(--text-muted);"></p>
+        </div>
+        <button class="close-btn" data-close-modal="modalWeekDetail">&times;</button>
+      </div>
+
+      <!-- HIGHLIGHT QUIEN DEBE MAS -->
+      <div id="weekModalDebtorBanner" class="top-debtor-banner">
+        <div class="top-debtor-avatar" id="weekModalDebtorAvatar">?</div>
+        <div class="top-debtor-info">
+          <h4>Quién debe más esta semana</h4>
+          <p id="weekModalDebtorDetail">-</p>
+        </div>
+      </div>
+
+      <!-- DESGLOSE DE CUÁNTO PAGARÁ CADA PERSONA -->
+      <h4 style="font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.5rem;">
+        <i data-lucide="users"></i> Desglose por Persona (Cuánto va a pagar)
+      </h4>
+      <div id="weekModalBreakdownList" class="person-breakdown-list">
+        <!-- Dynamic breakdown populated via JS -->
+      </div>
+
+      <!-- LISTADO DE GASTOS DE LA SEMANA -->
+      <h4 style="font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.5rem;">
+        <i data-lucide="receipt"></i> Gastos incluidos en esta semana
+      </h4>
+      <div id="weekModalItemsList" class="week-detail-items">
+        <!-- Dynamic list populated via JS -->
+      </div>
+
+      <div class="weekly-footer" style="margin-top: 1.5rem;">
+        <div>
+          <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">Total Pendiente</span>
+          <span id="weekModalTotalPending" class="weekly-total" style="color: var(--accent-amber);">$0.00</span>
+        </div>
+
+        <button id="btnPayCurrentWeek" class="btn btn-emerald">
+          <i data-lucide="check-check"></i> Marcar Semana como Pagada
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTRAR ABONO / PAGO PARCIAL -->
+  <div id="modalAbono" class="modal-overlay">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <div>
+          <h3>Registrar Abono</h3>
+          <p id="abonoModalSub" style="font-size: 0.825rem; color: var(--text-muted);"></p>
+        </div>
+        <button class="close-btn" data-close-modal="modalAbono">&times;</button>
+      </div>
+
+      <form id="formAbono">
+        <input type="hidden" id="abonoExpenseId">
+
+        <div class="form-group">
+          <label for="abonoMonto">Monto a abonar ($) *</label>
+          <input type="number" step="0.01" min="0.01" id="abonoMonto" class="text-input" placeholder="0.00" required>
+          <small id="abonoRemainingHint" style="font-size: 0.775rem; color: var(--accent-amber); margin-top: 0.3rem; display: block;"></small>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" data-close-modal="modalAbono">Cancelar</button>
+          <button type="submit" class="btn btn-emerald">
+            <i data-lucide="coins"></i> Aplicar Abono
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: DETALLE DE LIQUIDACIÓN HISTÓRICA -->
+  <div id="modalHistoryDetail" class="modal-overlay">
+    <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-header">
+        <div>
+          <h3 id="historyModalTitle">Detalle de Liquidación</h3>
+          <p id="historyModalSub" style="font-size: 0.85rem; color: var(--text-muted);"></p>
+        </div>
+        <button class="close-btn" data-close-modal="modalHistoryDetail">&times;</button>
+      </div>
+
+      <!-- DESTACADO DEL GASTO MÁS ALTO DE LA LIQUIDACIÓN -->
+      <div id="historyHighestExpenseBanner" class="top-debtor-banner" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3);">
+        <div class="top-debtor-avatar" style="background: var(--accent-primary);" id="historyModalHighestAvatar">💡</div>
+        <div class="top-debtor-info">
+          <h4 style="color: #a5b4fc;">En qué se gastó más</h4>
+          <p id="historyModalHighestDetail">-</p>
+        </div>
+      </div>
+
+      <!-- DESGLOSE DE LO QUE PAGÓ CADA PERSONA -->
+      <h4 style="font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.5rem;">
+        <i data-lucide="users"></i> Desglose por Persona
+      </h4>
+      <div id="historyModalBreakdownList" class="person-breakdown-list">
+        <!-- Dynamic breakdown populated via JS -->
+      </div>
+
+      <!-- LISTADO COMPLETO DE CONCEPTOS -->
+      <h4 style="font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.5rem;">
+        <i data-lucide="receipt"></i> Conceptos e ítems incluidos
+      </h4>
+      <div id="historyModalItemsList" class="week-detail-items">
+        <!-- Dynamic list populated via JS -->
+      </div>
+
+      <div class="weekly-footer" style="margin-top: 1.5rem;">
+        <div>
+          <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">Monto Total Liquidado</span>
+          <span id="historyModalTotalPaid" class="weekly-total" style="color: var(--accent-emerald);">$0.00</span>
+        </div>
+
+        <button class="btn btn-secondary" data-close-modal="modalHistoryDetail">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Entry Point -->
+  <script src="app.js"></script>
+</body>
+</html>
