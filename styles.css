@@ -437,41 +437,66 @@ body {
   gap: 1.25rem;
 }
 
-.week-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
+.week-card,
+.weekly-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
   border-radius: var(--radius-lg);
-  padding: 1.25rem;
-  box-shadow: var(--shadow-sm);
+  padding: 1.35rem;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
   transition: var(--transition-fast);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  position: relative;
+  overflow: hidden;
 }
 
-.week-card:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-accent);
+.week-card::before,
+.weekly-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  background: var(--accent-amber);
 }
 
-.week-card-header {
+.week-card.paid-full::before,
+.weekly-card.paid-full::before {
+  background: var(--accent-emerald);
+}
+
+.week-card:hover,
+.weekly-card:hover {
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.11);
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+}
+
+.week-card-header,
+.weekly-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.week-card-header h3 {
+.week-card-header h3,
+.weekly-date-range {
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--text-main);
 }
 
-.week-card-dates {
-  font-size: 0.775rem;
+.week-card-dates,
+.weekly-sub {
+  font-size: 0.8rem;
   color: var(--text-muted);
+  margin-top: 0.15rem;
 }
 
 .top-debtor-banner {
