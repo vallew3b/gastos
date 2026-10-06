@@ -3,16 +3,16 @@
    ========================================================================== */
 
 :root {
-  /* Color Palette - Vibrant Dark Mode */
-  --bg-primary: #0d0f17;
-  --bg-secondary: #161926;
-  --bg-card: #1e2235;
-  --bg-card-hover: #262b42;
-  --bg-glass: rgba(30, 34, 53, 0.7);
+  /* Color Palette - Vibrant Crisp Mode */
+  --bg-primary: #0a0c14;
+  --bg-secondary: #131624;
+  --bg-card: #1c2033;
+  --bg-card-hover: #262c46;
+  --bg-glass: rgba(28, 32, 51, 0.85);
   
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --text-dim: #6b7280;
+  --text-main: #ffffff;
+  --text-muted: #d1d5db;
+  --text-dim: #9ca3af;
 
   --accent-primary: #6366f1; /* Indigo */
   --accent-primary-hover: #4f46e5;
@@ -22,12 +22,12 @@
   --accent-rose: #f43f5e;    /* High debt / Danger */
   --accent-purple: #8b5cf6;
 
-  --border-light: rgba(255, 255, 255, 0.08);
-  --border-accent: rgba(99, 102, 241, 0.3);
+  --border-light: rgba(255, 255, 255, 0.15);
+  --border-accent: rgba(99, 102, 241, 0.5);
 
   --shadow-sm: 0 2px 4px rgba(0,0,0,0.3);
   --shadow-md: 0 8px 24px rgba(0,0,0,0.4);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.25);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
 
   --radius-sm: 8px;
   --radius-md: 14px;
