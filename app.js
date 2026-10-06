@@ -7,543 +7,267 @@ const SUPABASE_URL = 'https://ithlbiqwihgbpwcixvsi.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0aGxiaXF3aWhnYnB3Y2l4dnNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzE1MDksImV4cCI6MjEwNjgwNzUwOX0.slnluo03iFG266v7Y-BqbQc9aetFJUl0J4IuOTZC63s';
 
 let supabaseClient = null;
-if (window.supabase && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'COLOCA_AQUI_TU_SUPABASE_ANON_KEY') {
+if (window.supabase && SUPABASE_ANON_KEY) {
   try {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log('⚡ Conectado exitosamente a Supabase DB');
   } catch (err) {
-    console.warn('⚠️ No se pudo inicializar Supabase Client, usando almacenamiento LocalStorage.', err);
+    console.error('No se pudo inicializar Supabase:', err);
   }
 }
 
-const STORAGE_KEYS = {
-  EXPENSES: 'monse_cuentas_expenses',
-  PAYMENTS: 'monse_cuentas_payment_history',
-  PEOPLE: 'monse_cuentas_people'
-};
+// ==========================================================================
+// 1. DATA SERVICE — 100% SUPABASE (sin datos demo ni localStorage)
+// ==========================================================================
 
-function initializeDemoData() {
-  const existing = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-  if (!existing || existing === '[]') {
-    const today = new Date();
-    
-    const getOffsetDateStr = (daysOffset) => {
-      const d = new Date(today);
-      d.setDate(d.getDate() + daysOffset);
-      return d.toISOString().split('T')[0];
-    };
-
-    const initialExpenses = [
-      {
-        id: 'exp-1',
-        monto: 850.50,
-        montoPagado: 0,
-        concepto: 'Supermercado y despensa semanal',
-        quienDebe: 'Carlos',
-        fecha: getOffsetDateStr(-1),
-        estado: 'pendiente',
-        categoria: 'Alimentación',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'exp-2',
-        monto: 320.00,
-        montoPagado: 0,
-        concepto: 'Pago de Internet y servicios',
-        quienDebe: 'Monse',
-        fecha: getOffsetDateStr(-3),
-        estado: 'pendiente',
-        categoria: 'Servicios',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'exp-3',
-        monto: 1200.00,
-        montoPagado: 0,
-        concepto: 'Mantenimiento del departamento',
-        quienDebe: 'Carlos',
-        fecha: getOffsetDateStr(-4),
-        estado: 'pendiente',
-        categoria: 'Hogar',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'exp-4',
-        monto: 450.00,
-        montoPagado: 450.00,
-        concepto: 'Cena de fin de semana',
-        quienDebe: 'Ana',
-        fecha: getOffsetDateStr(-8),
-        estado: 'pagado',
-        categoria: 'Salidas',
-        createdAt: new Date().toISOString()
-      }
-    ];
-
-    const initialPeople = ['Monse', 'Carlos', 'Ana', 'Kenia'];
-
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initialExpenses));
-    localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(initialPeople));
-    localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify([]));
+function notifyError(msg) {
+  console.error(msg);
+  let box = document.getElementById('dbErrorToast');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'dbErrorToast';
+    box.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);width:max-content;max-width:92%;background:#e11d48;color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;font-size:14px;line-height:1.4;box-shadow:0 10px 25px rgba(0,0,0,.25);z-index:9999;text-align:center;';
+    box.addEventListener('click', () => { box.style.display = 'none'; });
+    document.body.appendChild(box);
   }
+  box.textContent = msg;
+  box.style.display = 'block';
+  clearTimeout(box._t);
+  box._t = setTimeout(() => { box.style.display = 'none'; }, 9000);
+}
+
+function db() {
+  if (!supabaseClient) {
+    const msg = 'No hay conexión con Supabase (la librería no cargó). Revisa tu internet y recarga.';
+    notifyError(msg);
+    throw new Error(msg);
+  }
+  return supabaseClient;
+}
+
+// Ejecuta una consulta y lanza error visible si Supabase la rechaza
+async function run(query, action) {
+  const { data, error } = await query;
+  if (error) {
+    const msg = error.code === '42501'
+      ? `Supabase bloqueó "${action}" por permisos (RLS). Ejecuta supabase_setup.sql en el SQL Editor de Supabase.`
+      : `Error en Supabase al ${action}: ${error.message}`;
+    notifyError(msg);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function newId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+function mapExpense(row) {
+  return {
+    id: row.id,
+    splitGroupId: row.split_group_id,
+    monto: parseFloat(row.monto) || 0,
+    montoPagado: parseFloat(row.monto_pagado) || 0,
+    concepto: row.concepto,
+    conceptoBase: row.concepto_base,
+    quienDebe: row.quien_debe,
+    fecha: row.fecha,
+    categoria: row.categoria,
+    estado: row.estado,
+    createdAt: row.created_at
+  };
+}
+
+function mapHistory(row) {
+  return {
+    id: row.id,
+    weekId: row.week_id,
+    weekLabel: row.week_label,
+    totalMonto: parseFloat(row.total_monto) || 0,
+    desglose: row.desglose || [],
+    gastosIds: row.gastos_ids || [],
+    esAbono: row.es_abono,
+    fechaLiquidacion: row.fecha_liquidacion
+  };
 }
 
 const dbService = {
   async init() {
-    if (!supabaseClient) {
-      initializeDemoData();
-    } else {
-      // Limpiar datos demo locales antiguos para no mostrar nombres de prueba
-      try {
-        localStorage.removeItem(STORAGE_KEYS.EXPENSES);
-        localStorage.removeItem(STORAGE_KEYS.PEOPLE);
-        localStorage.removeItem(STORAGE_KEYS.PAYMENTS);
-      } catch (e) {}
-    }
+    // Borrar restos de datos demo que versiones anteriores guardaron en el navegador
+    ['monse_cuentas_expenses', 'monse_cuentas_payment_history', 'monse_cuentas_people']
+      .forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    db();
   },
 
+  // ---------- GASTOS ----------
   async getExpenses() {
-    if (supabaseClient) {
-      try {
-        const { data, error } = await supabaseClient
-          .from('expenses')
-          .select('*')
-          .order('fecha', { ascending: false });
-
-        if (error) throw error;
-        
-        return (data || []).map(row => ({
-          id: row.id,
-          splitGroupId: row.split_group_id,
-          monto: parseFloat(row.monto),
-          montoPagado: parseFloat(row.monto_pagado || 0),
-          concepto: row.concepto,
-          conceptoBase: row.concepto_base,
-          quienDebe: row.quien_debe,
-          fecha: row.fecha,
-          categoria: row.categoria,
-          estado: row.estado,
-          createdAt: row.created_at
-        }));
-      } catch (e) {
-        console.error('Error leyendo gastos en Supabase:', e);
-      }
-    }
-
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      console.error('Error al leer gastos local', e);
-      return [];
-    }
+    const data = await run(
+      db().from('expenses').select('*').order('fecha', { ascending: false }),
+      'leer los gastos'
+    );
+    return (data || []).map(mapExpense);
   },
 
-  async getExpensesLocal() {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      return [];
-    }
+  async getExpenseById(id) {
+    const data = await run(db().from('expenses').select('*').eq('id', id).limit(1), 'leer el gasto');
+    return data && data[0] ? mapExpense(data[0]) : null;
   },
 
-  async addExpense(expenseData) {
-    const newExpense = {
-      id: 'exp-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      monto: parseFloat(expenseData.monto),
-      montoPagado: 0,
-      concepto: expenseData.concepto.trim(),
-      quienDebe: expenseData.quienDebe.trim(),
-      fecha: expenseData.fecha,
-      categoria: expenseData.categoria || 'Otros',
-      estado: 'pendiente',
-      createdAt: new Date().toISOString()
+  async addExpense(d) {
+    const row = {
+      id: newId('exp'),
+      monto: parseFloat(d.monto),
+      monto_pagado: 0,
+      concepto: d.concepto.trim(),
+      quien_debe: d.quienDebe.trim(),
+      fecha: d.fecha,
+      categoria: d.categoria || 'Otros',
+      estado: 'pendiente'
     };
-
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('expenses').insert([{
-          id: newExpense.id,
-          monto: newExpense.monto,
-          monto_pagado: 0,
-          concepto: newExpense.concepto,
-          quien_debe: newExpense.quienDebe,
-          fecha: newExpense.fecha,
-          categoria: newExpense.categoria,
-          estado: 'pendiente'
-        }]);
-      } catch (err) {
-        console.error('Error Supabase insert:', err);
-      }
-    }
-
-    const expenses = await this.getExpensesLocal();
-    expenses.unshift(newExpense);
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-    await this.addPerson(newExpense.quienDebe);
-    return newExpense;
+    await run(db().from('expenses').insert([row]), 'guardar el gasto');
+    await this.addPerson(row.quien_debe);
   },
 
-  async addSplitExpenses(splitData) {
-    const expenses = await this.getExpensesLocal();
-    const splitGroupId = 'grp-' + Date.now();
-    const createdExpenses = [];
-
-    for (const participant of splitData.participants) {
-      const newExpense = {
-        id: 'exp-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-        splitGroupId,
-        monto: parseFloat(participant.monto),
-        montoPagado: 0,
-        concepto: `${splitData.concepto.trim()} (${participant.quienDebe})`,
-        conceptoBase: splitData.concepto.trim(),
-        quienDebe: participant.quienDebe.trim(),
-        fecha: splitData.fecha,
-        categoria: splitData.categoria || 'Otros',
-        estado: 'pendiente',
-        createdAt: new Date().toISOString()
-      };
-
-      if (supabaseClient) {
-        try {
-          await supabaseClient.from('expenses').insert([{
-            id: newExpense.id,
-            split_group_id: splitGroupId,
-            monto: newExpense.monto,
-            monto_pagado: 0,
-            concepto: newExpense.concepto,
-            concepto_base: newExpense.conceptoBase,
-            quien_debe: newExpense.quienDebe,
-            fecha: newExpense.fecha,
-            categoria: newExpense.categoria,
-            estado: 'pendiente'
-          }]);
-        } catch (err) {
-          console.error('Error Supabase insert split:', err);
-        }
-      }
-      
-      expenses.unshift(newExpense);
-      createdExpenses.push(newExpense);
-      await this.addPerson(participant.quienDebe);
-    }
-
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-    return createdExpenses;
+  async addSplitExpenses(s) {
+    const groupId = newId('grp');
+    const rows = s.participants.map(p => ({
+      id: newId('exp'),
+      split_group_id: groupId,
+      monto: parseFloat(p.monto),
+      monto_pagado: 0,
+      concepto: `${s.concepto.trim()} (${p.quienDebe})`,
+      concepto_base: s.concepto.trim(),
+      quien_debe: p.quienDebe.trim(),
+      fecha: s.fecha,
+      categoria: s.categoria || 'Otros',
+      estado: 'pendiente'
+    }));
+    await run(db().from('expenses').insert(rows), 'guardar el gasto dividido');
   },
 
-  async addAbono(expenseId, abonoMonto) {
-    const expenses = await this.getExpenses();
-    const item = expenses.find(e => e.id === expenseId);
-    
-    if (item) {
-      const amount = parseFloat(abonoMonto) || 0;
-      const currentPaid = item.montoPagado || 0;
-      const newPaid = Math.min(item.monto, currentPaid + amount);
-      
-      item.montoPagado = newPaid;
-      
-      if (newPaid >= item.monto) {
-        item.estado = 'pagado';
-        item.fechaPago = new Date().toISOString();
-      } else if (newPaid > 0) {
-        item.estado = 'parcial';
-      } else {
-        item.estado = 'pendiente';
-      }
-
-      if (supabaseClient) {
-        try {
-          await supabaseClient.from('expenses').update({
-            monto_pagado: item.montoPagado,
-            estado: item.estado
-          }).eq('id', expenseId);
-        } catch (err) {
-          console.error('Error Supabase abono update:', err);
-        }
-      }
-
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-
-      const newHistoryItem = {
-        id: 'pay-abono-' + Date.now(),
-        weekLabel: `Abono: ${item.concepto}`,
-        totalMonto: amount,
-        desglose: [{ persona: item.quienDebe, monto: amount }],
-        gastosIds: [expenseId],
-        esAbono: true,
-        fechaLiquidacion: new Date().toISOString()
-      };
-
-      if (supabaseClient) {
-        try {
-          await supabaseClient.from('payment_history').insert([{
-            id: newHistoryItem.id,
-            week_label: newHistoryItem.weekLabel,
-            total_monto: amount,
-            desglose: newHistoryItem.desglose,
-            gastos_ids: newHistoryItem.gastosIds,
-            es_abono: true
-          }]);
-        } catch (err) {
-          console.error('Error Supabase insert history:', err);
-        }
-      }
-
-      const history = await this.getPaymentHistory();
-      history.unshift(newHistoryItem);
-      localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(history));
-
-      return item;
-    }
-    return null;
-  },
-
-  async updateExpense(id, updatedFields) {
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('expenses').update({
-          monto: parseFloat(updatedFields.monto),
-          concepto: updatedFields.concepto,
-          quien_debe: updatedFields.quienDebe,
-          fecha: updatedFields.fecha,
-          categoria: updatedFields.categoria
-        }).eq('id', id);
-      } catch (err) {
-        console.error('Error Supabase update:', err);
-      }
-    }
-
-    const expenses = await this.getExpensesLocal();
-    const index = expenses.findIndex(e => e.id === id);
-    if (index !== -1) {
-      expenses[index] = { ...expenses[index], ...updatedFields };
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-      return expenses[index];
-    }
-    return null;
+  async updateExpense(id, f) {
+    await run(
+      db().from('expenses').update({
+        monto: parseFloat(f.monto),
+        concepto: f.concepto.trim(),
+        quien_debe: f.quienDebe.trim(),
+        fecha: f.fecha,
+        categoria: f.categoria
+      }).eq('id', id),
+      'actualizar el gasto'
+    );
+    await this.addPerson(f.quienDebe);
   },
 
   async deleteExpense(id) {
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('expenses').delete().eq('id', id);
-      } catch (err) {
-        console.error('Error Supabase delete:', err);
-      }
-    }
-
-    let expenses = await this.getExpensesLocal();
-    expenses = expenses.filter(e => e.id !== id);
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    await run(db().from('expenses').delete().eq('id', id), 'eliminar el gasto');
     return true;
   },
 
   async toggleExpenseStatus(id) {
-    const expenses = await this.getExpenses();
-    const item = expenses.find(e => e.id === id);
-    if (item) {
-      if (item.estado === 'pagado') {
-        item.estado = 'pendiente';
-        item.montoPagado = 0;
-      } else {
-        item.estado = 'pagado';
-        item.montoPagado = item.monto;
-        item.fechaPago = new Date().toISOString();
-      }
+    const item = await this.getExpenseById(id);
+    if (!item) return null;
+    const pagado = item.estado !== 'pagado';
+    const changes = { estado: pagado ? 'pagado' : 'pendiente', monto_pagado: pagado ? item.monto : 0 };
+    await run(db().from('expenses').update(changes).eq('id', id), 'cambiar el estado');
+    return { ...item, estado: changes.estado, montoPagado: changes.monto_pagado };
+  },
 
-      if (supabaseClient) {
-        try {
-          await supabaseClient.from('expenses').update({
-            estado: item.estado,
-            monto_pagado: item.montoPagado
-          }).eq('id', id);
-        } catch (err) {
-          console.error('Error Supabase toggle:', err);
-        }
-      }
+  async addAbono(expenseId, abonoMonto) {
+    const item = await this.getExpenseById(expenseId);
+    if (!item) return null;
 
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-      return item;
-    }
-    return null;
+    const amount = parseFloat(abonoMonto) || 0;
+    const newPaid = Math.min(item.monto, (item.montoPagado || 0) + amount);
+    const estado = newPaid >= item.monto ? 'pagado' : (newPaid > 0 ? 'parcial' : 'pendiente');
+
+    await run(
+      db().from('expenses').update({ monto_pagado: newPaid, estado }).eq('id', expenseId),
+      'registrar el abono'
+    );
+    await run(
+      db().from('payment_history').insert([{
+        id: newId('pay-abono'),
+        week_label: `Abono: ${item.concepto}`,
+        total_monto: amount,
+        desglose: [{ persona: item.quienDebe, monto: amount }],
+        gastos_ids: [expenseId],
+        es_abono: true
+      }]),
+      'guardar el abono en el historial'
+    );
+    return { ...item, montoPagado: newPaid, estado };
   },
 
   async payWeek(weekId, weekLabel, expenseIds, breakdown, totalAmount) {
-    const expenses = await this.getExpenses();
-
-    const updatedExpenses = expenses.map(exp => {
-      if (expenseIds.includes(exp.id)) {
-        return { 
-          ...exp, 
-          estado: 'pagado', 
-          montoPagado: exp.monto,
-          fechaPago: new Date().toISOString() 
-        };
-      }
-      return exp;
-    });
-
-    if (supabaseClient) {
-      try {
-        for (const expId of expenseIds) {
-          const expItem = expenses.find(e => e.id === expId);
-          await supabaseClient.from('expenses').update({
-            estado: 'pagado',
-            monto_pagado: expItem ? expItem.monto : 0
-          }).eq('id', expId);
-        }
-      } catch (err) {
-        console.error('Error Supabase payWeek:', err);
-      }
+    const rows = await run(
+      db().from('expenses').select('id,monto').in('id', expenseIds),
+      'leer los gastos de la semana'
+    );
+    for (const r of rows || []) {
+      await run(
+        db().from('expenses').update({ estado: 'pagado', monto_pagado: r.monto }).eq('id', r.id),
+        'marcar la semana como pagada'
+      );
     }
-
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updatedExpenses));
-
-    const newPaymentRecord = {
-      id: 'pay-' + Date.now(),
-      weekId,
-      weekLabel,
-      totalMonto: totalAmount,
-      desglose: breakdown,
-      gastosIds: expenseIds,
-      fechaLiquidacion: new Date().toISOString()
-    };
-
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('payment_history').insert([{
-          id: newPaymentRecord.id,
-          week_id: weekId,
-          week_label: weekLabel,
-          total_monto: totalAmount,
-          desglose: breakdown,
-          gastos_ids: expenseIds
-        }]);
-      } catch (err) {
-        console.error('Error Supabase insert history:', err);
-      }
-    }
-
-    const history = await this.getPaymentHistory();
-    history.unshift(newPaymentRecord);
-    localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(history));
-
-    return newPaymentRecord;
+    await run(
+      db().from('payment_history').insert([{
+        id: newId('pay'),
+        week_id: weekId,
+        week_label: weekLabel,
+        total_monto: totalAmount,
+        desglose: breakdown,
+        gastos_ids: expenseIds,
+        es_abono: false
+      }]),
+      'guardar la liquidación en el historial'
+    );
   },
 
+  // ---------- HISTORIAL ----------
   async getPaymentHistory() {
-    if (supabaseClient) {
-      try {
-        const { data, error } = await supabaseClient
-          .from('payment_history')
-          .select('*')
-          .order('fecha_liquidacion', { ascending: false });
-
-        if (!error && data) {
-          return data.map(row => ({
-            id: row.id,
-            weekId: row.week_id,
-            weekLabel: row.week_label,
-            totalMonto: parseFloat(row.total_monto),
-            desglose: row.desglose,
-            gastosIds: row.gastos_ids,
-            esAbono: row.es_abono,
-            fechaLiquidacion: row.fecha_liquidacion
-          }));
-        }
-      } catch (e) {
-        console.error('Error leyendo historial Supabase:', e);
-      }
-    }
-
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      console.error('Error leyendo historial local', e);
-      return [];
-    }
+    const data = await run(
+      db().from('payment_history').select('*').order('fecha_liquidacion', { ascending: false }),
+      'leer el historial'
+    );
+    return (data || []).map(mapHistory);
   },
 
   async undoPayment(historyId) {
-    const history = await this.getPaymentHistory();
-    const record = history.find(h => h.id === historyId);
-    
-    if (record) {
-      const expenses = await this.getExpenses();
-      const updatedExpenses = expenses.map(exp => {
-        if (record.gastosIds.includes(exp.id)) {
-          return { ...exp, estado: 'pendiente', montoPagado: 0, fechaPago: null };
-        }
-        return exp;
-      });
+    const data = await run(
+      db().from('payment_history').select('*').eq('id', historyId).limit(1),
+      'leer la liquidación'
+    );
+    const record = data && data[0] ? mapHistory(data[0]) : null;
+    if (!record) return false;
 
-      if (supabaseClient) {
-        try {
-          for (const expId of record.gastosIds) {
-            await supabaseClient.from('expenses').update({
-              estado: 'pendiente',
-              monto_pagado: 0
-            }).eq('id', expId);
-          }
-          await supabaseClient.from('payment_history').delete().eq('id', historyId);
-        } catch (err) {
-          console.error('Error Supabase undoPayment:', err);
-        }
-      }
-
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updatedExpenses));
-
-      const newHistory = history.filter(h => h.id !== historyId);
-      localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(newHistory));
-      return true;
+    if (record.gastosIds.length > 0) {
+      await run(
+        db().from('expenses').update({ estado: 'pendiente', monto_pagado: 0 }).in('id', record.gastosIds),
+        'revertir los gastos'
+      );
     }
-    return false;
+    await run(db().from('payment_history').delete().eq('id', historyId), 'borrar la liquidación');
+    return true;
   },
 
+  // ---------- PERSONAS ----------
   async getPeople() {
-    if (supabaseClient) {
-      try {
-        const { data, error } = await supabaseClient
-          .from('people')
-          .select('nombre')
-          .order('nombre', { ascending: true });
-
-        if (!error && data) {
-          return data.map(r => r.nombre);
-        }
-      } catch (e) {
-        console.error('Error leyendo gente Supabase:', e);
-      }
-    }
-
-    const data = localStorage.getItem(STORAGE_KEYS.PEOPLE);
-    return data ? JSON.parse(data) : [];
+    const data = await run(
+      db().from('people').select('nombre').order('nombre', { ascending: true }),
+      'leer las personas'
+    );
+    return (data || []).map(r => r.nombre);
   },
 
   async addPerson(name) {
-    if (!name) return;
-    const formatted = name.trim();
-    if (!formatted) return;
-
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('people').upsert([{ nombre: formatted }], { onConflict: 'nombre' });
-      } catch (err) {
-        console.error('Error añadiendo persona en Supabase:', err);
-      }
-      return;
-    }
-
-    const people = await this.getPeople();
-    if (!people.includes(formatted)) {
-      people.push(formatted);
-      localStorage.setItem(STORAGE_KEYS.PEOPLE, JSON.stringify(people));
-    }
+    const nombre = (name || '').trim();
+    if (!nombre) return;
+    const existing = await run(db().from('people').select('nombre').eq('nombre', nombre).limit(1), 'buscar la persona');
+    if (existing && existing.length > 0) return;
+    await run(db().from('people').insert([{ nombre }]), 'guardar la persona');
   }
 };
+
 
 // ==========================================================================
 // 2. APPLICATION CONTROLLER
@@ -842,6 +566,10 @@ function setupEventListeners() {
       const categoria = elements.expCategoria.value;
 
       if (currentExpenseType === 'individual') {
+        if (!elements.expQuienDebe.value) {
+          alert('Primero agrega una persona con el botón 👤+ junto a "Quién Debe".');
+          return;
+        }
         const expenseData = {
           monto: totalAmount,
           concepto,
